@@ -284,3 +284,17 @@ PyInstaller --onedir  →  dist/VizTailor/VizTailor.exe（建議 onedir + Inno S
 
 - graphic-walker 在 shadow root 裡用 `<link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">` 載入 Leaflet 樣式；離線＋CSP（`style-src 'self' 'unsafe-inline'`）下載不到 → 底圖磚沒有絕對定位（散落、只看到幾塊）、多邊形圖層不顯示。§16 的簡化只是加速，不是破圖主因。
 - 對策：`src/geo/leaflet.css`（Leaflet 1.9.4 樣式的本地副本，BSD-2，已移除圖片規則）＋ `src/geo/leafletCss.ts`（以 adoptedStyleSheets 注入每個 shadow root），`App.tsx` 啟動時呼叫 `installLeafletCss()`。
+
+## 18. 打包版「Computation service … Failed to fetch」（待重新打包驗證）
+
+- 現象：打包後的 exe（`tauri.localhost`）改顏色時跳出 Oops！`TypeError: Failed to fetch at blob:http://tauri.localhost/...`。
+- 原因：graphic-walker 的運算 worker（`transform.worker`，以 blob 方式啟動）內含 `fetch("data:application/octet-stream;base64,…")` 來解壓縮資料；CSP 的 `connect-src` 沒有 `data:`／`blob:`，被擋。
+- 對策：`tauri.conf.json` 的 `csp` 與 `devCsp` 的 `connect-src` 加上 `data: blob:`（只是本機內嵌資料，不開放任何外部網路）。需重新執行 `build-release.bat`。
+
+## 19. 編輯色彩（Tableau 風格逐值上色）
+
+- 頂部按鈕「編輯色彩」：讀取目前放在「顏色」的欄位，左邊列出該欄位所有值（可搜尋、Ctrl／Shift 多選），右邊選調色盤（Tableau 10／20、色盲、Classic 10、高對比、柔和、交通燈、灰階）後點色塊指派；另有「指派調色盤」（依序套給全部）、自訂色（原生色彩選擇器）、重設／確定／取消／套用。
+- 實作：Graphic Walker 的 `scales.color` 可為函式，回傳 vega 的 `{domain, range}`。函式拿不到欄位 id，所以以「對應表（欄位→值→顏色）與實際值重疊最多」的欄位為準；沒指定的值沿用「色彩與大小」的分類色盤。純函式在 `src/colorScale.ts`（測試：`tests/colorScale.test.ts`），UI 在 `src/colorEdit.tsx`。
+- 對應表存 localStorage `viztailor.colormap.v1`（依欄位 id，不分資料集）。
+- 限制：連續（數值）欄位是漸層，不支援逐值；請改成維度或用「色彩與大小」換漸層。
+- **一鍵排色**（編輯色彩對話框右上）：選度量（預設取圖表上正在用的）、彙總（加總／平均／筆數）、色帶（紅／橘／藍／綠／紫／灰＋兩種發散）、分布（依名次／依數值比例）、反轉 → 自動替每個值配深淺，左側清單改依度量由高到低排。純函式 `autoAssign`／`rampAt` 在 `src/colorScale.ts`。以整份資料計算，不跟圖表篩選連動；資料換了要再按一次。

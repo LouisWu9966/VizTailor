@@ -10,6 +10,7 @@ import { installOfflineBasemap, setBasemapData } from './geo/basemap';
 import { simplifyFC } from './geo/simplify';
 import { installLeafletCss } from './geo/leafletCss';
 import { StylePanel, useVizStyle } from './palette';
+import { ColorEditor, distinctValues, loadColorMaps, makeColorScale, saveColorMaps, type ColorMaps, type ColorTarget } from './colorEdit';
 import { CalcPanel } from './calc/CalcPanel';
 import { applyCalcs, EMPTY, type CalcState } from './calc/apply';
 import { sigMap, syncCalcFields } from './calc/sync';
@@ -50,6 +51,25 @@ export default function App() {
   const stageRef = useRef<HTMLElement>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [geoWarn, setGeoWarn] = useState<string | null>(null);
+  const [colorMaps, setColorMapsState] = useState<ColorMaps>(loadColorMaps);
+  const [ce, setCe] = useState<{ target: ColorTarget | null; message: string | null } | null>(null);
+  const setColorMaps = (m: ColorMaps) => { setColorMapsState(m); saveColorMaps(m); };
+  const scalesAll = useMemo(() => {
+    const color = makeColorScale(colorMaps, style.cat);
+    return (color ? { ...scales, color } : scales) as typeof scales;
+  }, [scales, colorMaps, style.cat]);
+  const openColorEditor = () => {
+    const enc = storeRef.current?.currentVis?.encodings?.color?.[0] as { fid: string; name?: string; analyticType?: string; semanticType?: string } | undefined;
+    if (!enc) return setCe({ target: null, message: '請先把一個欄位拖到「顏色」，再來編輯各個值的顏色。' });
+    if (enc.analyticType === 'measure' || enc.semanticType === 'quantitative')
+      return setCe({ target: null, message: `「${enc.name ?? enc.fid}」是連續（數值）欄位，顏色是漸層，不是逐值指定。若要逐值上色，請把它改成「維度」（欄位右鍵／下拉選單），或改用上方「色彩與大小」換漸層色盤。` });
+    const values = distinctValues((viewRef.current?.rows ?? []) as Array<Record<string, unknown>>, enc.fid);
+    if (values.length === 0) return setCe({ target: null, message: '這個欄位沒有可用的值。' });
+    const measures = (viewRef.current?.fields ?? []).filter((f) => f.analyticType === 'measure').map((f) => ({ fid: f.fid, name: f.name }));
+    const e2 = storeRef.current?.currentVis?.encodings as unknown as Record<string, Array<{ fid: string; analyticType?: string }>> | undefined;
+    const used = [...(e2?.rows ?? []), ...(e2?.columns ?? [])].find((f) => f.analyticType === 'measure' && measures.some((m) => m.fid === f.fid))?.fid;
+    setCe({ target: { fid: enc.fid, name: enc.name ?? enc.fid, values, rows: (viewRef.current?.rows ?? []) as Array<Record<string, unknown>>, measures, defaultMeasure: used }, message: null });
+  };
   const seq = useRef(0);
   const cache = useRef(new Map<string, Entry>());
   const curKey = useRef('');
@@ -234,6 +254,7 @@ export default function App() {
         {ds && <span className="meta">{ds.name} · {ds.rows.length.toLocaleString()} 列 · {ds.fields.length} 欄</span>}
         {busy && <span className="meta">讀取中…</span>}
         <StylePanel style={style} setStyle={setStyle} />
+        <button disabled={!ds} onClick={openColorEditor}>編輯色彩</button>
         <button disabled={!ds} onClick={() => setCalcOpen((o) => !o)}>參數與計算欄位</button>
         <span className="spacer" />
         <span className="offline">離線執行 · 資料不外送</span>
@@ -314,7 +335,7 @@ export default function App() {
             appearance="light"
             geographicData={geoData}
             vizThemeConfig={theme}
-            scales={scales}
+            scales={scalesAll}
           />
         ) : (
           <div className="empty">
@@ -323,6 +344,7 @@ export default function App() {
           </div>
         )}
       </main>
+      {ce && <ColorEditor target={ce.target} message={ce.message} onClose={() => setCe(null)} maps={colorMaps} setMaps={setColorMaps} cat={style.cat} />}
       <CalcPanel open={calcOpen && !!ds} onClose={() => setCalcOpen(false)} state={calcState} setState={setCalcState} baseFields={ds?.fields ?? []} errors={applied?.errors ?? {}} />
       <footer className="credit">
         <SharkToggle />
