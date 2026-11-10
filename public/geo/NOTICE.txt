@@ -1,0 +1,10 @@
+VizTailor map data notices
+
+world-countries.json / country-aliases.json
+  Derived from Natural Earth 1:50m Admin 0 - Countries (naturalearthdata.com), public domain.
+  Coordinates rounded to 2 decimals; Antarctica removed; property names re-labelled (zh-TW).
+
+cities.json
+  Derived from GeoNames cities5000 (geonames.org), licensed CC BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/). Reduced to name / country / lat / lng /
+  population / Han-script alternate names. Data packaging via adamaveray/geonames (MIT).
